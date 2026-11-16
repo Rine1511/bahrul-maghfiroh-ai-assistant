@@ -11,7 +11,15 @@ class GeminiService
         $apiKey = config('services.gemini.key');
         $model = config('services.gemini.model');
 
-        $response = Http::timeout(60)
+        $response = Http::connectTimeout(15)
+            ->timeout(60)
+            ->retry(3, 2000, function ($exception) {
+                return $exception instanceof \Illuminate\Http\Client\ConnectionException
+                    || (
+                        $exception instanceof \Illuminate\Http\Client\RequestException
+                        && in_array($exception->response->status(), [429, 500, 502, 503, 504])
+                    );
+            })
             ->withHeaders([
                 'x-goog-api-key' => $apiKey,
             ])

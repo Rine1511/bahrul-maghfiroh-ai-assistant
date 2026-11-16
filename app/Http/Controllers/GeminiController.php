@@ -8,24 +8,27 @@ class GeminiController extends Controller
 {
     public function test()
     {
-        $response = Http::withHeaders([
-            'x-goog-api-key' => config('services.gemini.key'),
-        ])->post(
-            'https://generativelanguage.googleapis.com/v1beta/models/'
-            . config('services.gemini.model')
-            . ':generateContent',
-            [
-                'contents' => [
-                    [
-                        'parts' => [
-                            [
-                                'text' => 'Halo Gemini, perkenalkan dirimu.'
+        $response = Http::connectTimeout(15)
+            ->timeout(60)
+            ->withHeaders([
+                'x-goog-api-key' => config('services.gemini.key'),
+            ])
+            ->post(
+                'https://generativelanguage.googleapis.com/v1beta/models/'
+                . config('services.gemini.model')
+                . ':generateContent',
+                [
+                    'contents' => [
+                        [
+                            'parts' => [
+                                [
+                                    'text' => 'Halo Gemini, perkenalkan dirimu.'
+                                ]
                             ]
                         ]
                     ]
                 ]
-            ]
-        );
+            );
 
         if ($response->failed()) {
             return response()->json([
