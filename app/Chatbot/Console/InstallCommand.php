@@ -2,7 +2,7 @@
 
 namespace App\Chatbot\Console;
 
-use App\Chatbot\database\ChatbotKnowledgeSeeder;
+use Database\Seeders\ChatbotKnowledgeSeeder;
 use Illuminate\Console\Command;
 
 class InstallCommand extends Command

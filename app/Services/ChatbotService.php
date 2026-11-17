@@ -2,7 +2,7 @@
 
 namespace App\Chatbot\Services;
 
-use App\Chatbot\Models\ChatKnowledge;
+use App\Models\ChatbotKnowledge;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;

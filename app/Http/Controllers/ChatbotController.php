@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Chatbot\Services\ChatbotService;
 use App\Models\ChatLog;
-use App\Services\GeminiService;
 use App\Services\KnowledgeService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -12,11 +12,11 @@ use Illuminate\Support\Facades\Log;
 
 class ChatbotController extends Controller
 {
-    protected GeminiService $gemini;
+    protected ChatbotService $gemini;
     protected KnowledgeService $knowledge;
 
     public function __construct(
-        GeminiService $gemini,
+        ChatbotService $gemini,
         KnowledgeService $knowledge
     ) {
         $this->gemini = $gemini;
@@ -67,6 +67,23 @@ class ChatbotController extends Controller
                 $contextText = "(Tidak ada data spesifik yang cocok dari basis data pondok.)\n";
             }
 
+            // Mengambil riwayat percakapan.
+            $history = session('chat_history', []);
+
+            $historyText = '';
+
+            foreach (array_slice($history, -10) as $item) {
+                $role = ($item['role'] ?? '') === 'user'
+                    ? 'Pengguna'
+                    : 'Asisten';
+
+                $content = trim((string) ($item['content'] ?? ''));
+
+                if ($content !== '') {
+                    $historyText .= "{$role}: {$content}\n";
+                }
+            }
+
             // Menyusun prompt untuk Gemini.
             $prompt = "
 Kamu adalah Bahrul Maghfiroh AI Assistant, asisten virtual resmi Pondok Pesantren Bahrul Maghfiroh Malang.
@@ -98,16 +115,29 @@ PEDOMAN MENJAWAB:
 INFORMASI RESMI PONDOK:
 {$contextText}
 
+RIWAYAT PERCAKAPAN:
+{$historyText}
+
 PERTANYAAN PENGGUNA:
 {$message}
 ";
 
             // Meminta jawaban dari Gemini.
-            $answer = $this->gemini->generate($prompt);
+            $answer = null;
+
+            if (method_exists($this->gemini, 'ask')) {
+                $answer = $this->gemini->ask($prompt);
+            } elseif (method_exists($this->gemini, 'generate')) {
+                $answer = $this->gemini->generate($prompt);
+            }
+
+            if (!is_string($answer) || trim($answer) === '') {
+                throw new \RuntimeException('Gemini tidak menghasilkan jawaban.');
+            }
+
+            $answer = trim($answer);
 
             // Menyimpan riwayat percakapan ke session.
-            $history = session('chat_history', []);
-
             $history[] = [
                 'role' => 'user',
                 'content' => $message,
@@ -123,20 +153,23 @@ PERTANYAAN PENGGUNA:
 
             session(['chat_history' => $history]);
 
+            // Menentukan sumber informasi.
+            $source = $knowledge->isNotEmpty() ? 'local_ai' : 'ai';
+
             // Menyimpan percakapan ke database.
             ChatLog::create([
                 'session_id' => $data['sid']
                     ?? substr(sha1((string) $request->ip()), 0, 40),
                 'question' => $message,
                 'answer' => $answer,
-                'source' => $knowledge->isNotEmpty() ? 'local' : 'ai',
+                'source' => $source,
                 'answered' => true,
             ]);
 
             return response()->json([
                 'success' => true,
                 'answer' => $answer,
-                'source' => $knowledge->isNotEmpty() ? 'local' : 'ai',
+                'source' => $source,
             ]);
 
         } catch (\Throwable $e) {
@@ -169,7 +202,8 @@ PERTANYAAN PENGGUNA:
      */
     public function embed(): Response
     {
-        $dir = config('chatbot.path') . '/Resources/assets/';
+        $dir = app_path('Chatbot/Resources/assets/');
+
         $flags = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES;
 
         $config = [
