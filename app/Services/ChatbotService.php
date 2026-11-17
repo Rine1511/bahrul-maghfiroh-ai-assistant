@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Chatbot\Services;
+namespace App\Services;
 
 use App\Models\ChatbotKnowledge;
 use Illuminate\Support\Facades\Cache;

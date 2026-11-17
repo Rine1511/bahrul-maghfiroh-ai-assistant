@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Chatbot\Services\ChatbotService;
+use App\Services\ChatbotService;
 use App\Models\ChatLog;
 use App\Services\KnowledgeService;
 use Illuminate\Http\Request;

@@ -12,11 +12,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Memuat konfigurasi chatbot.
-        $this->mergeConfigFrom(
-            app_path('Chatbot/config.php'),
-            'chatbot'
-        );
+        //
     }
 
     /**
@@ -24,17 +20,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Memuat routes chatbot.
-        $this->loadRoutesFrom(
-            app_path('Chatbot/routes.php')
-        );
-
-        // Memuat migration chatbot.
-        $this->loadMigrationsFrom(
-            app_path('Chatbot/Database/Migrations')
-        );
-
-        // Mendaftarkan command chatbot.
         if ($this->app->runningInConsole()) {
             $this->commands([
                 InstallCommand::class,
