@@ -3,8 +3,8 @@
 return [
 
     'gemini' => [
-    'key' => env('GEMINI_API_KEY'),
-    'model' => env('GEMINI_MODEL', 'gemini-3.8-flash'),
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.8-flash'),
     ],
 
     'postmark' => [
@@ -26,6 +26,13 @@ return [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+    ],
+
+    'website' => [
+        'url' => env(
+            'WEBSITE_URL',
+            'https://bahrulmaghfirohmalang.or.id'
+        ),
     ],
 
 ];

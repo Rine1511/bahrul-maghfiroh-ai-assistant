@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Http\Request;
+use App\Models\ChatLog;
 use App\Services\GeminiService;
 use App\Services\KnowledgeService;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 
 class ChatbotController extends Controller
 {
-    protected $gemini;
-    protected $knowledge;
+    protected GeminiService $gemini;
+    protected KnowledgeService $knowledge;
 
     public function __construct(
         GeminiService $gemini,
@@ -20,6 +23,9 @@ class ChatbotController extends Controller
         $this->knowledge = $knowledge;
     }
 
+    /**
+     * Menampilkan halaman chatbot.
+     */
     public function index()
     {
         $history = session('chat_history', []);
@@ -27,36 +33,42 @@ class ChatbotController extends Controller
         return view('chatbot.index', compact('history'));
     }
 
-    public function sendMessage(Request $request)
+    /**
+     * Memproses pertanyaan dan memberikan jawaban.
+     */
+    public function sendMessage(Request $request): JsonResponse
     {
-        $request->validate([
-            'message' => 'required|string|max:2000',
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+            'sid' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $message = trim($request->message);
+        $message = trim($data['message']);
 
-        // Mencari informasi relevan dari database (FAQ, Knowledge, Sources)
-        $knowledge = $this->knowledge->search($message);
+        try {
+            // Mencari informasi relevan dari database.
+            $knowledge = $this->knowledge->search($message);
 
-        $contextText = '';
-        if ($knowledge->isNotEmpty()) {
-            foreach ($knowledge as $item) {
-                $typeLabel = match ($item->source_type ?? 'knowledge') {
-                    'faq' => 'FAQ Resmi',
-                    'website' => 'Halaman Website',
-                    'sib_bm' => 'Data Fasilitas SIB-BM',
-                    default => 'Informasi Pondok',
-                };
+            $contextText = '';
 
-                $contextText .= "--- [{$typeLabel}: {$item->title}] ---\n";
-                $contextText .= "{$item->content}\n\n";
+            if ($knowledge->isNotEmpty()) {
+                foreach ($knowledge as $item) {
+                    $typeLabel = match ($item->source_type ?? 'knowledge') {
+                        'faq' => 'FAQ Resmi',
+                        'website' => 'Halaman Website',
+                        'sib_bm' => 'Data Fasilitas SIB-BM',
+                        default => 'Informasi Pondok',
+                    };
+
+                    $contextText .= "--- [{$typeLabel}: {$item->title}] ---\n";
+                    $contextText .= "{$item->content}\n\n";
+                }
+            } else {
+                $contextText = "(Tidak ada data spesifik yang cocok dari basis data pondok.)\n";
             }
-        } else {
-            $contextText = "(Tidak ada data spesifik yang cocok dari basis data pondok.)\n";
-        }
 
-        // Instruksi dan batasan prompt untuk Gemini
-        $prompt = "
+            // Menyusun prompt untuk Gemini.
+            $prompt = "
 Kamu adalah Bahrul Maghfiroh AI Assistant, asisten virtual resmi Pondok Pesantren Bahrul Maghfiroh Malang.
 
 TUGAS UTAMA:
@@ -71,7 +83,7 @@ GAYA KOMUNIKASI:
 PEDOMAN MENJAWAB:
 
 1. PERTANYAAN SEPUTAR PONDOK:
-- Jawab hanya berdasarkan INFORMASI RESMI PONDOK yang diberikan.
+- Jawab hanya berdasarkan informasi resmi pondok yang diberikan.
 - Jangan mengarang informasi, biaya, tanggal, alamat, nomor kontak, atau fakta lainnya.
 - Jika informasi yang ditanyakan belum tersedia, sampaikan bahwa informasi tersebut belum tersedia dalam sistem dan sarankan pengguna menghubungi pihak pondok secara langsung.
 
@@ -90,10 +102,10 @@ PERTANYAAN PENGGUNA:
 {$message}
 ";
 
-        try {
+            // Meminta jawaban dari Gemini.
             $answer = $this->gemini->generate($prompt);
 
-            // Menyimpan riwayat percakapan di session
+            // Menyimpan riwayat percakapan ke session.
             $history = session('chat_history', []);
 
             $history[] = [
@@ -106,11 +118,25 @@ PERTANYAAN PENGGUNA:
                 'content' => $answer,
             ];
 
+            // Membatasi riwayat agar session tidak terus membesar.
+            $history = array_slice($history, -20);
+
             session(['chat_history' => $history]);
+
+            // Menyimpan percakapan ke database.
+            ChatLog::create([
+                'session_id' => $data['sid']
+                    ?? substr(sha1((string) $request->ip()), 0, 40),
+                'question' => $message,
+                'answer' => $answer,
+                'source' => $knowledge->isNotEmpty() ? 'local' : 'ai',
+                'answered' => true,
+            ]);
 
             return response()->json([
                 'success' => true,
                 'answer' => $answer,
+                'source' => $knowledge->isNotEmpty() ? 'local' : 'ai',
             ]);
 
         } catch (\Throwable $e) {
@@ -125,13 +151,51 @@ PERTANYAAN PENGGUNA:
         }
     }
 
-    public function reset()
+    /**
+     * Mereset riwayat percakapan.
+     */
+    public function reset(): JsonResponse
     {
         session()->forget('chat_history');
 
         return response()->json([
             'success' => true,
             'message' => 'Percakapan berhasil direset.',
+        ]);
+    }
+
+    /**
+     * Menyediakan widget chatbot dalam bentuk JavaScript.
+     */
+    public function embed(): Response
+    {
+        $dir = config('chatbot.path') . '/Resources/assets/';
+        $flags = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES;
+
+        $config = [
+            'name' => config('chatbot.name'),
+            'subtitle' => config('chatbot.subtitle'),
+            'launcher' => config('chatbot.launcher'),
+            'greeting' => config('chatbot.greeting'),
+            'quick' => config('chatbot.quick_replies'),
+        ];
+
+        $cssPath = $dir . 'widget.css';
+        $jsPath = $dir . 'widget.js';
+
+        if (!file_exists($cssPath) || !file_exists($jsPath)) {
+            abort(404, 'File widget chatbot tidak ditemukan.');
+        }
+
+        $body = '(function(){var CSS='
+            . json_encode(file_get_contents($cssPath), $flags)
+            . ',CONFIG=' . json_encode($config, $flags) . ';'
+            . file_get_contents($jsPath)
+            . "\n})();";
+
+        return response($body, 200, [
+            'Content-Type' => 'application/javascript; charset=utf-8',
+            'Cache-Control' => 'public, max-age=300',
         ]);
     }
 }

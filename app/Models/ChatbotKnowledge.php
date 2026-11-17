@@ -13,6 +13,7 @@ class ChatbotKnowledge extends Model
         'category',
         'content',
         'keywords',
+        'source_type',
         'source_url',
         'is_active',
     ];
