@@ -123,13 +123,7 @@ PERTANYAAN PENGGUNA:
 ";
 
             // Meminta jawaban dari Gemini.
-            $answer = null;
-
-            if (method_exists($this->gemini, 'ask')) {
-                $answer = $this->gemini->ask($prompt);
-            } elseif (method_exists($this->gemini, 'generate')) {
-                $answer = $this->gemini->generate($prompt);
-            }
+            $answer = $this->gemini->generate($prompt);
 
             if (!is_string($answer) || trim($answer) === '') {
                 throw new \RuntimeException('Gemini tidak menghasilkan jawaban.');
