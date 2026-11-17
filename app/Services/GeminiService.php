@@ -32,7 +32,10 @@ class GeminiService
                                 ['text' => $prompt]
                             ]
                         ]
-                    ]
+                    ],
+                    'generationConfig' => [
+                        'temperature' => 0.3,
+                    ],
                 ]
             );
 

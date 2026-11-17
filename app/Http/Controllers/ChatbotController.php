@@ -33,35 +33,60 @@ class ChatbotController extends Controller
             'message' => 'required|string|max:2000',
         ]);
 
-        $message = $request->message;
+        $message = trim($request->message);
 
-        // Mencari informasi dari database
+        // Mencari informasi relevan dari database (FAQ, Knowledge, Sources)
         $knowledge = $this->knowledge->search($message);
 
-        $context = '';
+        $contextText = '';
+        if ($knowledge->isNotEmpty()) {
+            foreach ($knowledge as $item) {
+                $typeLabel = match ($item->source_type ?? 'knowledge') {
+                    'faq' => 'FAQ Resmi',
+                    'website' => 'Halaman Website',
+                    'sib_bm' => 'Data Fasilitas SIB-BM',
+                    default => 'Informasi Pondok',
+                };
 
-        foreach ($knowledge as $item) {
-            $context .= "\nJudul: {$item->title}\n";
-            $context .= "Informasi: {$item->content}\n";
+                $contextText .= "--- [{$typeLabel}: {$item->title}] ---\n";
+                $contextText .= "{$item->content}\n\n";
+            }
+        } else {
+            $contextText = "(Tidak ada data spesifik yang cocok dari basis data pondok.)\n";
         }
 
-        // Instruksi untuk Gemini
+        // Instruksi dan batasan prompt untuk Gemini
         $prompt = "
-Kamu adalah Bahrul Maghfiroh AI Assistant,
-asisten virtual resmi Pondok Pesantren Bahrul Maghfiroh.
+Kamu adalah Bahrul Maghfiroh AI Assistant, asisten virtual resmi Pondok Pesantren Bahrul Maghfiroh Malang.
 
-Gunakan bahasa Indonesia dengan gaya formal dan ramah.
+TUGAS UTAMA:
+Kamu hanya bertugas memberikan informasi dan menjawab pertanyaan yang berkaitan dengan Pondok Pesantren Bahrul Maghfiroh Malang.
 
-Aturan:
-1. Jawab berdasarkan informasi yang diberikan.
-2. Jangan mengarang fakta atau informasi.
-3. Jika informasi tidak tersedia, sampaikan dengan jujur.
-4. Berikan jawaban yang jelas, singkat, dan mudah dipahami.
+GAYA KOMUNIKASI:
+- Gunakan bahasa Indonesia yang sopan, ramah, dan mudah dipahami.
+- Berikan jawaban secara singkat, jelas, dan informatif.
+- Gunakan sapaan yang santun.
+- Jangan memberikan informasi yang tidak memiliki dasar.
 
-Informasi yang tersedia:
-{$context}
+PEDOMAN MENJAWAB:
 
-Pertanyaan pengguna:
+1. PERTANYAAN SEPUTAR PONDOK:
+- Jawab hanya berdasarkan INFORMASI RESMI PONDOK yang diberikan.
+- Jangan mengarang informasi, biaya, tanggal, alamat, nomor kontak, atau fakta lainnya.
+- Jika informasi yang ditanyakan belum tersedia, sampaikan bahwa informasi tersebut belum tersedia dalam sistem dan sarankan pengguna menghubungi pihak pondok secara langsung.
+
+2. SALAM DAN SAPAAN:
+- Kamu diperbolehkan membalas salam, sapaan, ucapan terima kasih, dan percakapan singkat secara ramah.
+- Arahkan percakapan kembali pada informasi Pondok Pesantren Bahrul Maghfiroh.
+
+3. PERTANYAAN DI LUAR PONDOK:
+- Jangan menjawab pertanyaan umum yang tidak berkaitan dengan Pondok Pesantren Bahrul Maghfiroh.
+- Sampaikan dengan sopan bahwa kamu hanya dapat membantu memberikan informasi seputar Pondok Pesantren Bahrul Maghfiroh Malang.
+
+INFORMASI RESMI PONDOK:
+{$contextText}
+
+PERTANYAAN PENGGUNA:
 {$message}
 ";
 
@@ -89,10 +114,13 @@ Pertanyaan pengguna:
             ]);
 
         } catch (\Throwable $e) {
+            Log::error('Chatbot sendMessage error: ' . $e->getMessage(), [
+                'exception' => $e,
+            ]);
 
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Maaf, saat ini layanan chatbot sedang mengalami kendala. Silakan coba kembali beberapa saat lagi.',
             ], 500);
         }
     }
